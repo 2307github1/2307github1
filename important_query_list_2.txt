@@ -1,0 +1,179 @@
+1. ---------- query to find the only specific query in audit file in specific database ------
+SELECT
+       event_time ,
+       session_server_principal_name AS UserName ,
+       server_instance_name ,
+       database_name ,
+       object_name ,
+       statement
+  FROM sys.fn_get_audit_file('C:\AUDITs\*.sqlaudit', DEFAULT, DEFAULT)
+WHERE
+      action_id = 'SL'
+  AND
+       database_name = 'ACMEDB';
+
+
+
+2. -----------------query to find the how many table contains the index in db ---------------------------
+SELECT name
+FROM sys.tables 
+WHERE OBJECTPROPERTY(object_id,'IsIndexed') = 0
+
+3. ------------------query to find all primary key in a single database(i.e which database u select) table --------------------
+  select 
+a.TABLE_CATALOG as DB_name,a.TABLE_SCHEMA as tbl_schema, a.TABLE_NAME as tbl_name,a. CONSTRAINT_NAME as constraint_name,b.CONSTRAINT_TYPE
+ from INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE a
+join INFORMATION_SCHEMA.TABLE_CONSTRAINTS b on
+ a.CONSTRAINT_NAME=b.CONSTRAINT_NAME
+
+
+4. -------------------- query to find the index name present on table in single database ------------------
+ select schema_name(t.schema_id) + '.' + t.[name] as table_view, 
+    case when t.[type] = 'U' then 'Table'
+        when t.[type] = 'V' then 'View'
+        end as [object_type],
+    i.index_id,
+    case when i.is_primary_key = 1 then 'Primary key'
+        when i.is_unique = 1 then 'Unique'
+        else 'Not unique' end as [type],
+    i.[name] as index_name,
+    substring(column_names, 1, len(column_names)-1) as [columns],
+    case when i.[type] = 1 then 'Clustered index'
+        when i.[type] = 2 then 'Nonclustered unique index'
+        when i.[type] = 3 then 'XML index'
+        when i.[type] = 4 then 'Spatial index'
+        when i.[type] = 5 then 'Clustered columnstore index'
+        when i.[type] = 6 then 'Nonclustered columnstore index'
+        when i.[type] = 7 then 'Nonclustered hash index'
+        end as index_type
+from sys.objects t
+    inner join sys.indexes i
+        on t.object_id = i.object_id
+    cross apply (select col.[name] + ', '
+                    from sys.index_columns ic
+                        inner join sys.columns col
+                            on ic.object_id = col.object_id
+                            and ic.column_id = col.column_id
+                    where ic.object_id = t.object_id
+                        and ic.index_id = i.index_id
+                            order by col.column_id
+                            for xml path ('') ) D (column_names)
+where t.is_ms_shipped <> 1
+and index_id > 0
+order by schema_name(t.schema_id) + '.' + t.[name], i.index_id
+
+
+5. -- Clear the query plan cache (don't execute this in production!)
+dbcc freeproccache
+go
+ 
+-- CPU intensive query over adventureworks database
+select TransactionId,ProductId,
+             ReferenceOrderId,ReferenceOrderLineId,
+             TransactionDate,TransactionType,
+             Quantity,ActualCost,
+             ModifiedDate
+from production.TransactionHistory
+       order by modifiedDate desc
+
+6.   ------------query to check last update statistics in a table----------------
+ 
+ SELECT 
+   st.object_id                          AS [Table ID]
+ , OBJECT_NAME(st.object_id)             AS [Table Name]
+ , st.name                               AS [Index Name]
+ , STATS_DATE(st.object_id, st.stats_id) AS [LastUpdated]
+ , modification_counter                  AS [Rows Modified]
+ FROM
+ sys.stats st 
+ CROSS APPLY
+ sys.dm_db_stats_properties(st.object_id, st.stats_id) AS sp 
+ WHERE
+ STATS_DATE(st.object_id, st.stats_id)<=DATEADD(DAY,-1,GETDATE())  
+ AND modification_counter > 0 
+ AND OBJECTPROPERTY(st.object_id,'IsUserTable')=1
+ GO
+
+
+7.  SQL Server Query Wise CPU Utilization
+
+/*****	Script: Top 10 queries that causes high CPU Utilization *****/
+/*****	Support: SQL Server 2008 and Above *****/
+/*****	TestedOn: SQL Server 2008,R2 and 2014 *****/
+/*****	Output: All query related details *****/
+/*****	Note: This script returns list of costly queries when CPU utilization is >=80% from last 10 min ****/
+
+SET NOCOUNT ON
+DECLARE @ts_now bigint 
+DECLARE @AvgCPUUtilization DECIMAL(10,2) 
+
+SELECT @ts_now = cpu_ticks/(cpu_ticks/ms_ticks) FROM sys.dm_os_sys_info
+
+-- load the CPU utilization in the past 10 minutes into the temp table, you can load them into a permanent table
+SELECT TOP(10) SQLProcessUtilization AS [SQLServerProcessCPUUtilization]
+,SystemIdle AS [SystemIdleProcess]
+,100 - SystemIdle - SQLProcessUtilization AS [OtherProcessCPU Utilization]
+,DATEADD(ms, -1 * (@ts_now - [timestamp]), GETDATE()) AS [EventTime] 
+INTO #CPUUtilization
+FROM ( 
+      SELECT record.value('(./Record/@id)[1]', 'int') AS record_id, 
+            record.value('(./Record/SchedulerMonitorEvent/SystemHealth/SystemIdle)[1]', 'int') 
+            AS [SystemIdle], 
+            record.value('(./Record/SchedulerMonitorEvent/SystemHealth/ProcessUtilization)[1]', 
+            'int') 
+            AS [SQLProcessUtilization], [timestamp] 
+      FROM ( 
+            SELECT [timestamp], CONVERT(xml, record) AS [record] 
+            FROM sys.dm_os_ring_buffers 
+            WHERE ring_buffer_type = N'RING_BUFFER_SCHEDULER_MONITOR' 
+            AND record LIKE '%<SystemHealth>%') AS x 
+      ) AS y 
+ORDER BY record_id DESC
+
+
+-- check if the average CPU utilization was over 80% in the past 10 minutes
+SELECT @AvgCPUUtilization = AVG([SQLServerProcessCPUUtilization] + [OtherProcessCPU Utilization])
+FROM #CPUUtilization
+WHERE EventTime > DATEADD(MM, -10, GETDATE())
+
+IF @AvgCPUUtilization >= 80
+BEGIN
+	SELECT TOP(10)
+		CONVERT(VARCHAR(25),@AvgCPUUtilization) +'%' AS [AvgCPUUtilization]
+		, GETDATE() [Date and Time]
+		, r.cpu_time
+		, r.total_elapsed_time
+		, s.session_id
+		, s.login_name
+		, s.host_name
+		, DB_NAME(r.database_id) AS DatabaseName
+		, SUBSTRING (t.text,(r.statement_start_offset/2) + 1,
+		((CASE WHEN r.statement_end_offset = -1
+			THEN LEN(CONVERT(NVARCHAR(MAX), t.text)) * 2
+			ELSE r.statement_end_offset
+		END - r.statement_start_offset)/2) + 1) AS [IndividualQuery]
+		, SUBSTRING(text, 1, 200) AS [ParentQuery]
+		, r.status
+		, r.start_time
+		, r.wait_type
+		, s.program_name
+	INTO #PossibleCPUUtilizationQueries		
+	FROM sys.dm_exec_sessions s
+	INNER JOIN sys.dm_exec_connections c ON s.session_id = c.session_id
+	INNER JOIN sys.dm_exec_requests r ON c.connection_id = r.connection_id
+	CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+	WHERE s.session_id > 50
+		AND r.session_id != @@spid
+	order by r.cpu_time desc
+	
+	-- query the temp table, you can also send an email report to yourself or your development team
+	SELECT *
+	FROM #PossibleCPUUtilizationQueries		
+END
+
+-- drop the temp tables
+IF OBJECT_ID('TEMPDB..#CPUUtilization') IS NOT NULL
+drop table #CPUUtilization
+
+IF OBJECT_ID('TEMPDB..#PossibleCPUUtilizationQueries') IS NOT NULL
+drop table #PossibleCPUUtilizationQueries

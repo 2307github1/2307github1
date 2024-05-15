@@ -1,0 +1,196 @@
+1.http://udayarumilli.com/sql-script-monitor-cpu-utilization-2/
+
+2. ----------------Find all IP's or users who access a specific SQL Server----------------
+SELECT DB_NAME(database_id) as [DB]
+    , login_name
+    , nt_domain
+    , nt_user_name
+    , status
+    , host_name
+    , program_name
+    , COUNT(*) AS [Connections]
+FROM sys.dm_exec_sessions
+WHERE database_id > 0 -- OR 4 for user DBs
+GROUP BY database_id, login_name, status, host_name, program_name, nt_domain, nt_user_name;
+
+3. Script to find Top 20 Costliest Queries – High CPU
+ This script sourced from here. It results a list of queries which are utilizing high CPU. Below is the SQL Script to Monitor CPU Utilization from Ad-hoc queries.
+
+/*****	Script: Top 20 Stored Procedures using High CPU *****/
+
+/*****	Output: Queries, CPU, Elapsed Times, Ms and S ****/
+SELECT TOP (20)
+    st.text AS Query,
+    qs.execution_count,
+    qs.total_worker_time AS Total_CPU,
+    total_CPU_inSeconds = --Converted from microseconds
+    qs.total_worker_time/1000000,
+    average_CPU_inSeconds = --Converted from microseconds
+    (qs.total_worker_time/1000000) / qs.execution_count,
+    qs.total_elapsed_time,
+    total_elapsed_time_inSeconds = --Converted from microseconds
+    qs.total_elapsed_time/1000000,
+    qp.query_plan
+FROM sys.dm_exec_query_stats AS qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) AS st
+CROSS apply sys.dm_exec_query_plan (qs.plan_handle) AS qp
+ORDER BY qs.total_worker_time DESC OPTION (RECOMPILE);
+
+
+4.  Script to find Top 20 Costliest Stored Procedures – High CPU:
+ This script sourced from here. It results a list of stored procedures which are utilizing high CPU. This script goes through the buffer cache and find out these results based on Total and Average worker thread times. Below is the SQL Script to Monitor CPU Utilization from the stored procedure point of view.
+
+/*****	Script: Top 20 Stored Procedures using High CPU *****/
+
+
+*****/
+SELECT TOP (20) 
+  p.name AS [SP Name], 
+  qs.total_worker_time AS [TotalWorkerTime], 
+  qs.total_worker_time/qs.execution_count AS [AvgWorkerTime], 
+  qs.execution_count, 
+  ISNULL(qs.execution_count/DATEDIFF(Second, qs.cached_time, GETDATE()), 0) AS [Calls/Second],
+  qs.total_elapsed_time, 
+  qs.total_elapsed_time/qs.execution_count AS [avg_elapsed_time], 
+  qs.cached_time
+FROM	sys.procedures AS p WITH (NOLOCK)
+INNER JOIN sys.dm_exec_procedure_stats AS qs WITH (NOLOCK) ON p.[object_id] = qs.[object_id]
+WHERE qs.database_id = DB_ID()
+ORDER BY qs.total_worker_time DESC OPTION (RECOMPILE);
+
+5.  SQL - Query to get server's IP address
+
+
+SELECT  
+   CONNECTIONPROPERTY('net_transport') AS net_transport,
+   CONNECTIONPROPERTY('protocol_type') AS protocol_type,
+   CONNECTIONPROPERTY('auth_scheme') AS auth_scheme,
+   CONNECTIONPROPERTY('local_net_address') AS local_net_address,
+   CONNECTIONPROPERTY('local_tcp_port') AS local_tcp_port,
+   CONNECTIONPROPERTY('client_net_address') AS client_net_address 
+
+
+6. ------------------ Query to find the cpu utilizaton with 20 minitues-------------
+
+DECLARE @ts BIGINT;
+DECLARE @lastNmin TINYINT;
+SET @lastNmin = 20;
+SELECT @ts =(SELECT cpu_ticks/(cpu_ticks/ms_ticks) FROM sys.dm_os_sys_info); 
+SELECT TOP(@lastNmin)
+		SQLProcessUtilization AS [SQLServer_CPU_Utilization], 
+		SystemIdle AS [System_Idle_Process], 
+		100 - SystemIdle - SQLProcessUtilization AS [Other_Process_CPU_Utilization], 
+		DATEADD(ms,-1 *(@ts - [timestamp]),GETDATE())AS [Event_Time] 
+FROM (SELECT record.value('(./Record/@id)[1]','int')AS record_id, 
+record.value('(./Record/SchedulerMonitorEvent/SystemHealth/SystemIdle)[1]','int')AS [SystemIdle], 
+record.value('(./Record/SchedulerMonitorEvent/SystemHealth/ProcessUtilization)[1]','int')AS [SQLProcessUtilization], 
+[timestamp]      
+FROM (SELECT[timestamp], convert(xml, record) AS [record]             
+FROM sys.dm_os_ring_buffers             
+WHERE ring_buffer_type =N'RING_BUFFER_SCHEDULER_MONITOR'AND record LIKE'%%')AS x )AS y 
+ORDER BY record_id DESC;
+
+
+7. --------------------------query to find blocking and type of blocking---------------------------
+USE master
+GO
+SELECT session_id, wait_duration_ms, wait_type, blocking_session_id 
+FROM sys.dm_os_waiting_tasks 
+WHERE blocking_session_id <> 0
+GO
+12:24 28-12-2022
+8. ---------query to find which query running here paste the session id-----------
+DECLARE @sqltext VARBINARY(128)
+SELECT @sqltext = sql_handle
+FROM sys.sysprocesses
+WHERE spid = (3371)
+SELECT TEXT
+FROM sys.dm_exec_sql_text(@sqltext)
+GO
+
+9. -------- query to find dependency ----------------
+select distinct o.name as object_name , o.type_desc from sys.sql_modules m inner join 
+sys.objects o on m.object_id = o.object_id where m.definition like '%select * from "CL_PIWC"."dbo"."SBIPIWC_IND%'
+
+10. -----------------query history---------------------
+with s as (
+select top(1000)
+creation_time,
+last_execution_time,
+execution_count,
+total_worker_time/1000 as CPU,
+convert(money, (total_worker_time))/(execution_count*1000)as [AvgCPUTime],
+qs.total_elapsed_time/1000 as TotDuration,
+convert(money, (qs.total_elapsed_time))/(execution_count*1000)as [AvgDur],
+total_logical_reads as [Reads],
+total_logical_writes as [Writes],
+total_logical_reads+total_logical_writes as [AggIO],
+convert(money, (total_logical_reads+total_logical_writes)/(execution_count + 0.0)) as [AvgIO],
+[sql_handle],
+plan_handle,
+statement_start_offset,
+statement_end_offset,
+plan_generation_num,
+total_physical_reads,
+convert(money, total_physical_reads/(execution_count + 0.0)) as [AvgIOPhysicalReads],
+convert(money, total_logical_reads/(execution_count + 0.0)) as [AvgIOLogicalReads],
+convert(money, total_logical_writes/(execution_count + 0.0)) as [AvgIOLogicalWrites],
+query_hash,
+query_plan_hash,
+total_rows,
+convert(money, total_rows/(execution_count + 0.0)) as [AvgRows],
+total_dop,
+convert(money, total_dop/(execution_count + 0.0)) as [AvgDop],
+total_grant_kb,
+convert(money, total_grant_kb/(execution_count + 0.0)) as [AvgGrantKb],
+total_used_grant_kb,
+convert(money, total_used_grant_kb/(execution_count + 0.0)) as [AvgUsedGrantKb],
+total_ideal_grant_kb,
+convert(money, total_ideal_grant_kb/(execution_count + 0.0)) as [AvgIdealGrantKb],
+total_reserved_threads,
+convert(money, total_reserved_threads/(execution_count + 0.0)) as [AvgReservedThreads],
+total_used_threads,
+convert(money, total_used_threads/(execution_count + 0.0)) as [AvgUsedThreads]
+from sys.dm_exec_query_stats as qs with(readuncommitted)
+order by convert(money, (qs.total_elapsed_time))/(execution_count*1000) desc
+)
+select
+s.creation_time,
+s.last_execution_time,
+s.execution_count,
+s.CPU,
+s.[AvgCPUTime],
+s.TotDuration,
+s.[AvgDur],
+s.[AvgIOLogicalReads],
+s.[AvgIOLogicalWrites],
+s.[AggIO],
+s.[AvgIO],
+s.[AvgIOPhysicalReads],
+s.plan_generation_num,
+s.[AvgRows],
+s.[AvgDop],
+s.[AvgGrantKb],
+s.[AvgUsedGrantKb],
+s.[AvgIdealGrantKb],
+s.[AvgReservedThreads],
+s.[AvgUsedThreads],
+--st.text as query_text,
+case
+when sql_handle IS NULL then ' '
+else(substring(st.text,(s.statement_start_offset+2)/2,(
+case
+when s.statement_end_offset =-1 then len(convert(nvarchar(MAX),st.text))*2      
+else s.statement_end_offset    
+end - s.statement_start_offset)/2  ))
+end as query_text,
+db_name(st.dbid) as database_name,
+object_schema_name(st.objectid, st.dbid)+'.'+object_name(st.objectid, st.dbid) as [object_name],
+sp.[query_plan],
+s.[sql_handle],
+s.plan_handle,
+s.query_hash,
+s.query_plan_hash
+from s
+cross apply sys.dm_exec_sql_text(s.[sql_handle]) as st
+cross apply sys.dm_exec_query_plan(s.[plan_handle]) as sp

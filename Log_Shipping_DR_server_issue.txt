@@ -1,0 +1,15 @@
+  ---------------------------- Log Shipping Concern--------------------------------------
+   --- if This error was arise when your DC Goes down & restoring DR server trn file error 
+
+   Msg 4319, Level 16, State 3, Line 1
+A previous restore operation was interrupted and did not complete processing on file ‘AdventureWorks2014log’. Either restore the backup set that was interrupted or restart the restore sequence.
+Msg 3013, Level 16, State 1, Line 1
+RESTORE LOG is terminating abnormally.
+
+
+------ Run this command in DR Server To Restore the trn file 
+
+
+RESTORE LOG AdventureWorks2014
+FROM DISK = 'D:\SQLBackups\Logs\AdventureWorks2014_LOG_202001021250.trn'
+WITH FILE = 1,NORECOVERY, STATS = 10, CONTINUE_AFTER_ERROR;

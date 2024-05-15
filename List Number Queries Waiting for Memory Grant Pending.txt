@@ -1,0 +1,5 @@
+SELECT @@SERVERNAME AS [Server Name],
+cntr_value AS [Memory Grants Pending]
+FROM sys.dm_os_performance_counters WITH (NOLOCK)
+WHERE [object_name] LIKE N'%Memory Manager%'
+AND counter_name = N'Memory Grants Pending'

@@ -1,0 +1,134 @@
+
+1. -- cpu or processor count
+exec xp_msver 'ProcessorCount'
+
+----- To see which database consumes the most memory, use the query:
+SELECT
+CASE database_id
+WHEN 32767 THEN 'ResourceDb'
+ELSE db_name(database_id)
+END AS database_name, COUNT(1)/128 AS megabytes_in_cache
+FROM sys.dm_os_buffer_descriptors
+GROUP BY DB_NAME(database_id) ,database_id
+ORDER BY megabytes_in_cache DESC;
+
+2. --- To identify the table or index that consumes the most memory, run this query in the database you’d like to inspect:
+
+SELECT COUNT(1)/128 AS megabytes_in_cache
+,name ,index_id
+FROM sys.dm_os_buffer_descriptors AS bd
+INNER JOIN
+(
+SELECT object_name(object_id) AS name
+,index_id ,allocation_unit_id
+FROM sys.allocation_units AS au
+INNER JOIN sys.partitions AS p
+ON au.container_id = p.hobt_id
+AND (au.type = 1 OR au.type = 3)
+UNION ALL
+SELECT object_name(object_id) AS name
+,index_id, allocation_unit_id
+FROM sys.allocation_units AS au
+INNER JOIN sys.partitions AS p
+ON au.container_id = p.partition_id
+AND au.type = 2
+) AS obj
+ON bd.allocation_unit_id = obj.allocation_unit_id
+WHERE database_id = DB_ID()
+GROUP BY name, index_id
+ORDER BY megabytes_in_cache DESC;
+
+
+--- Here are the top five metrics to monitor to improve memory-related performance issues: 
+/*
+1. Buffer Cache Hit Ratio
+This metric shows how SQL Server utilizes buffer cache
+The hit ratio identifies the percent of page requests that were completed by data pages from the buffer cache versus all data page requests
+Pages that are not found in the buffer cache are read from the disk, which is much slower
+The ideal buffer cache ratio is 100 (i.e., SQL Server reads all pages from the buffer cache and none from the disk)
+The recommended buffer cache value is greater than 90
+
+2. Page Life Expectancy (PLE)
+Page Life Expectancy measures how long (in seconds) a data page stays in the buffer cache
+The longer the PLE, the better the chance that SQL Server will read the pages from the buffer cache and not have to go to the disk
+If there isn’t enough memory, data pages are flushed from the buffer cache more often to free up the space for new pages
+Historically, when systems had far less memory than they do now, a “normal” PLE value was 300 seconds
+Today, a formula is used to determine “good” PLE: Page Life Expectancy = 300 seconds for every 4 GB of RAM on your server
+The PLE should remain stable if monitored over time
+Fast, frequent decreases indicate memory problems
+A drop of more than 50% should be investigated immediately
+
+3. Page Reads/Sec (Server Level)
+This metric shows how many physical reads (i.e., reads from disk) occurred in one second across all databases on an instance
+Physical reads are expensive and slow
+Decrease physical reads by using a larger data cache, intelligent indexes, and more efficient queries, or by changing the database design
+The recommended value is less than 90
+A value higher than 90 indicates insufficient memory and indexing issues
+
+4. Page Writes/Sec
+This metric shows the number of times pages that were written to disk on the server level in one second
+The recommended value is less than 90
+
+5. Pages Input/Sec and Pages Output/Sec (Memory Counters)
+Pages input/sec is the number of pages brought in from the disk every second
+Pages output/sec is the number of pages written to the disk every second to make room in the buffer cache
+Pages/sec is the sum of pages input/sec and pages output/sec
+If pages/sec value is consistently more than 50, additional investigation is needed
+
+*/
+
+3. --- Query to find the buffer memory with database wise
+;WITH src AS
+(
+    SELECT
+        database_id,
+        COUNT_BIG(*) AS db_buffer_pages
+    FROM sys.dm_os_buffer_descriptors
+    --WHERE database_id BETWEEN 5 AND 32766
+    GROUP BY database_id
+)
+SELECT
+    CASE [database_id] WHEN 32767 THEN 'Resource DB' ELSE DB_NAME([database_id]) END AS [Database Name],
+    db_buffer_pages AS BufferPages,
+    db_buffer_pages /128.0 AS BufferMB
+FROM src
+ORDER BY db_buffer_pages DESC
+OPTION(RECOMPILE, MAXDOP 1);
+
+
+
+
+
+ 4. ----------query to find the windows server memory
+SELECT [server memory] = physical_memory_kb , committed_kb -- /1024.00/1024.00/1024.00
+FROM sys.dm_os_sys_info;
+
+SELECT object_name, cntr_value 
+FROM sys.dm_os_performance_counters
+WHERE counter_name = 'Total Server Memory (KB)';
+
+
+
+5. -- query to find the sql server memory 
+SELECT [name], [value], [value_in_use]
+FROM sys.configurations
+WHERE [name] = 'max server memory (MB)' OR [name] = 'min server memory (MB)';
+
+6. -- query to assign to the sql server memory in MB
+sp_configure 'show advanced options', 1;
+GO
+RECONFIGURE;
+GO
+sp_configure 'max server memory', 12288;
+GO
+RECONFIGURE;
+GO
+
+-- View Lock pages in memory status
+SELECT sql_memory_model_desc FROM sys.dm_os_sys_info;
+
+-- CONVENTIONAL. Lock pages in memory privilege isn't granted.
+-- LOCK_PAGES. Lock pages in memory privilege is granted.
+-- LARGE_PAGES. Lock pages in memory privilege is granted in Enterprise mode with Trace Flag 834 enabled. 
+
+

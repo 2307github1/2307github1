@@ -1,0 +1,31 @@
+--Memory usage server wide
+;WITH src AS
+(
+    SELECT
+        database_id,
+        COUNT_BIG(*) AS db_buffer_pages
+    FROM sys.dm_os_buffer_descriptors
+    --WHERE database_id BETWEEN 5 AND 32766
+    GROUP BY database_id
+)
+SELECT
+    CASE [database_id] WHEN 32767 THEN 'Resource DB' ELSE DB_NAME([database_id]) END AS [Database Name],
+    db_buffer_pages AS BufferPages,
+    db_buffer_pages /128.0 AS BufferMB
+FROM src
+ORDER BY db_buffer_pages DESC
+OPTION(RECOMPILE, MAXDOP 1);
+
+
+
+--Server-wide memory usage of plan cache
+SELECT
+    [cacheobjtype], ObjType,
+    COUNT(1) AS Plans,
+    SUM(UseCounts) AS UseCounts,
+    SUM(CAST(size_in_bytes AS real)) / 1024.0 / 1024 AS [SizeMB]
+FROM sys.dm_exec_cached_plans
+--where [cacheobjtype] = 'Compiled Plan' and [objtype] in ('Adhoc', 'Prepared')
+GROUP BY CacheObjType, ObjType
+ORDER BY SizeMB DESC
+OPTION(RECOMPILE, MAXDOP 1)

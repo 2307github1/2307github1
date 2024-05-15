@@ -1,0 +1,6 @@
+CREATE TRIGGER StopTableCreation ON DATABASE
+FOR CREATE_TABLE
+AS
+PRINT 'This database does not allow new tables.'
+ROLLBACK TRANSACTION
+GO

@@ -1,0 +1,16 @@
+DELIMITER //
+
+ALTER  EVENT BKP_DELETE
+ON SCHEDULE EVERY 1 DAY
+STARTS TIMESTAMP(CURDATE() + INTERVAL 2 HOUR ) 
+DO
+BEGIN
+    -- Updated or modified SQL statement goes here
+  insert into call_details_backup 
+select * from call_details where start_time <= CURRENT_DATE() - INTERVAL 7 DAY;
+ 
+delete from call_details where id in (select id from call_details_backup);
+    
+END //
+
+DELIMITER ;

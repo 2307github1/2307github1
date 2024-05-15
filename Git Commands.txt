@@ -1,0 +1,108 @@
+    					Git Commands
+
+*. To set details for git.
+-> git config --global user.name "ShubhamPanchal"
+   git config --global user.email "shubhamspanchal98@gmail.com"
+
+*. To check details for git.
+-> git config --global user.name
+   git config --global user.email
+
+*. To create git repository.
+-> git init
+
+*. To show hidden files and folders where .git file is present.
+-> ls -lart
+
+*. To show file content.
+-> cat filename.html
+
+*. To check status of files available in repository.
+-> git status
+
+*. To check short status where is file now stagingor modified like red M and green M
+-> git status -s
+
+*. To add single file in staging.
+-> git add filename.html
+
+*. To add all files in staging.
+-> git add -A
+
+*. To commit single file in staging.
+-> git commit -m "Write comment" filname.html
+
+*. To commit all files in staging.
+-> git commit -a -m "Write comment"
+
+*. To create blank file.
+-> touch about.html
+
+*. To update single file with last modified file.
+-> git checkout filename.html
+
+*. To update all files with last modified file.
+-> git checkout -f
+
+*. To check all commited files and their comments.
+-> git log
+
+*. To check last 5 files details with commits and comments.
+-> git log -p -5
+
+*. To clear cmd
+-> clear
+
+*. To compare working area files with staging.
+-> git diff
+
+*. To compare last commit with staging.
+-> git diff -staged
+
+*. To get list of all files
+-> ls
+
+*. To delete file from working area and staging.
+-> git rm
+
+*. To delete file from only from staging.
+-> git rm --cached filename.html
+
+*. To create gitignore file and We have to add filenames and extention in .gitignore
+-> touch .gitignore
+-> To ignore all files from project -> filenmae.log
+-> To ignore only .gitignore file availabe log file -> /filename.log
+-> To ignore all .log files from project -> *.log
+-> To ignore all log files from perticular folder -> foldername/
+
+*.To check working branch.
+-> git branch
+
+*. To create new branch.
+-> git branch branchName
+
+*. To create new branch and switch directly in that branch.
+-> git branch checkout -b branchName
+
+*. To switch branch.
+-> git checkout branchName
+
+*. To merge two branch
+-> git merge NewBranchName
+
+*. To add github repository url for push.
+-> git remote add origin https://github.com/shubhamSpanchal/GitProject.git 
+
+*. To check github repository added name.
+-> git remote
+
+*. To check push fetch URLs of github repository.
+-> git remote -v
+
+*. To push local repository to github.
+-> git push origin master(local repository name)
+
+*. To fetch code from github repository to local pc
+-> git clone https://github.com/shubhamSpanchal/DuplicateStringCount.git
+
+

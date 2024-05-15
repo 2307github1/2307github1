@@ -1,0 +1,18 @@
+use sip_proxy;
+
+DELIMITER //
+
+ALTER EVENT BKP_DELETE
+ON SCHEDULE EVERY 1 DAY
+STARTS timestamp(curdate() + INTERVAL 2 hour)
+DO
+BEGIN
+    -- Your SQL statements for the event go here
+    -- For example, you might want to insert data into a backup table
+      insert into call_details_backup 
+      select * from call_details where start_time <= CURRENT_DATE() - INTERVAL 7 DAY;
+ 
+      delete from call_details where id in (select id from call_details_backup);
+END //
+
+DELIMITER ;

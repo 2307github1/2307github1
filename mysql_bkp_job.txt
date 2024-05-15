@@ -1,0 +1,16 @@
+use sip_proxy
+DELIMITER //
+
+create  EVENT BKP_DELETE
+ON SCHEDULE EVERY 1 DAY
+STARTS TIMESTAMP(CURDATE() + INTERVAL 15 HOUR) 
+DO
+BEGIN
+    -- Updated or modified SQL statement goes here
+    insert into call_details_new 
+select * from call_details_backup_new;
+delete from call_details_backup_new where id in (select id from call_details_new);
+    
+END//
+
+DELIMITER ;
