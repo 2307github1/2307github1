@@ -1,0 +1,80 @@
+USE [master]
+GO
+
+/****** Object:  Table [dbo].[TBL_Daily_Growth]    Script Date: 11/2/2022 4:27:52 PM ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+SET ANSI_PADDING ON
+GO
+
+CREATE TABLE [dbo].[TBL_Daily_Growth](
+	[DATABASENAME] [sysname] NULL,
+	[USED] [numeric](10, 2) NULL,
+	[DATE] [varchar](10) NULL
+) ON [PRIMARY]
+
+GO
+
+SET ANSI_PADDING OFF
+GO
+
+======================================================================================================
+
+--select * from  TBL_DAILY_GROWTH where CONVERT(VARCHAR(10),date,121)  <  '2014-02-01'
+--order by date desc
+
+--	DROP TABLE #TMPDATE
+GO
+--	DROP TABLE #TBL_DAILY_GROWTH_TEMP
+GO
+
+CREATE TABLE [dbo].[#TBL_Daily_Growth_Temp](
+	[DATABASENAME] [sysname] NULL,
+	[USED] [numeric](10, 2) NULL,
+	[DATE] datetime		
+) 
+	GO
+	INSERT INTO #TBL_DAILY_GROWTH_TEMP
+	SELECT * FROM MASTER..TBL_DAILY_GROWTH 
+
+
+
+--select * from ##TmpDate
+
+SELECT DATABASENAME, T.USED, T.DATE Dt, Replace(Convert(varchar(6), T.DATE, 106), ' ', '_') d1, 
+IsNull(T.USED -(Select T1.USED From dbo.#TBL_Daily_Growth_Temp T1 Where T1.DATABASENAME=T.DatabaseName And Convert(varchar(10),t1.DATE, 121) = (Convert(varchar(10), T.DATE-1, 121))), 0) USD 
+	Into #TmpDate
+		FROM dbo.#TBL_Daily_Growth_Temp T 
+		Where CONVERT(VARCHAR(10),T.DATE,121) BETWEEN '2022-10-01' AND '2022-10-31'
+		order by 1, 3
+GO
+
+Declare @SqlWhere as varchar(max)
+		Select @SqlWhere = ''
+		Select @SqlWhere = @SqlWhere + '[' + Replace(Convert(varchar(6), dt, 106), ' ', '_') + '],' From #TmpDate Group by dt order by dt
+		Select @SqlWhere = Substring(@SqlWhere, 1, Len(@SqlWhere)-1)
+	--Select @SqlWhere
+
+Exec ('
+SELECT DATABASENAME,' + @SqlWhere + ' 
+
+From (
+
+    SELECT DATABASENAME, d1, SUM(USD) UD FROM #TmpDate Group by DATABASENAME, d1
+
+) A
+
+PIVOT (
+
+    SUM(UD) 
+
+    FOR d1 
+
+    IN (' + @SqlWhere + ')
+
+    ) pt
+')

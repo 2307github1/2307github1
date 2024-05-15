@@ -1,0 +1,117 @@
+sp_configure 'show advanced options'
+	,1
+ 
+RECONFIGURE
+GO
+ 
+sp_configure 'xp_cmdshell'
+	,1
+ 
+RECONFIGURE
+GO
+ 
+sp_CONFIGURE 'Database Mail XPs'
+	,1
+ 
+RECONFIGURE
+GO
+
+--------------------------------------------------------------------------------
+
+-- Deleting temporary tables
+SET NOCOUNT ON
+ 
+IF OBJECT_ID('Tempdb..#Creport') IS NOT NULL
+	DROP TABLE Tempdb..#Creport;
+ 
+IF OBJECT_ID('Tempdb..#output') IS NOT NULL
+	DROP TABLE Tempdb..#output;
+ 
+-- by default it will take the current server name, we can set the server name as well
+DECLARE @sql VARCHAR(4000)
+DECLARE @LOCAL_NET_ADDRESS VARCHAR(20)
+DECLARE @svrName VARCHAR(20)
+ 
+SET @svrName = CAST(SERVERPROPERTY('ComputerNamePhysicalNetBIOS') AS VARCHAR(30))
+SET @LOCAL_NET_ADDRESS = Cast(CONNECTIONPROPERTY('LOCAL_NET_ADDRESS') AS VARCHAR(255))
+SET @sql = 'powershell.exe -c "Get-WmiObject -ComputerName ' + QUOTENAME(@svrName, '''') + ' -Class Win32_Volume -Filter ''DriveType = 3'' | select name,capacity,freespace | foreach{$_.name+''|''+$_.capacity/1048576+''%''+$_.freespace/1048576+''*''}"'
+ 
+-- creating a temporary table
+CREATE TABLE Tempdb..#output (line VARCHAR(255))
+ 
+CREATE TABLE Tempdb..#Creport (
+	[SERVER NAME] VARCHAR(100)
+	,DRIVENAME VARCHAR(100)
+	,CAPACITY_GB INT
+	,FREESPACE_GB INT
+	,USED_SPACE_PERCENTAGE AS (100 - (FREESPACE_GB * 100 / CAPACITY_GB))
+	)
+ 
+INSERT #output
+EXEC xp_cmdshell @sql
+ 
+-- script to retrieve the values in MB from PS Script output
+-- script to retrieve the values in GB from PS Script output
+-- inserting disk name, total space, and free space value into temporary table
+INSERT INTO Tempdb..#Creport
+SELECT --CONNECTIONPROPERTY('LOCAL_NET_ADDRESS') AS LOCAL_NET_ADDRESS, 
+	@SVRNAME [SERVER NAME]
+	,RTRIM(LTRIM(SUBSTRING(LINE, 1, CHARINDEX('|', LINE) - 1))) AS DRIVENAME
+	,ROUND(CAST(RTRIM(LTRIM(SUBSTRING(LINE, CHARINDEX('|', LINE) + 1, (CHARINDEX('%', LINE) - 1) - CHARINDEX('|', LINE)))) AS FLOAT) / 1024, 0) AS 'CAPACITY(GB)'
+	,ROUND(CAST(RTRIM(LTRIM(SUBSTRING(LINE, CHARINDEX('%', LINE) + 1, (CHARINDEX('*', LINE) - 1) - CHARINDEX('%', LINE)))) AS FLOAT) / 1024, 0) AS 'FREESPACE(GB)'
+FROM Tempdb..#output
+WHERE line LIKE '[A-Z][:]%'
+ORDER BY drivename
+ 
+-- HTML
+DECLARE @tableHTML NVARCHAR(MAX);
+DECLARE @servername VARCHAR(max)
+ 
+SET @servername = @@SERVERNAME
+SET @tableHTML = N'<H3> Disk space available on: ' + @svrName + '</H3>' + -- ' | ' + @LOCAL_NET_ADDRESS + 
+	N'<table border="1" Cellspacing="0" cellpadding="0" style="font-size:x-small;">' + N'<tr style="background-color:#FFFF00;color:black;font-weight:bold;" align="center">' + N'<td align=center><b>SERVER NAME</b></td>
+	<td align=center><b>DRIVENAME</b></td>
+	<td align=center><b>CAPACITY(GB)</b></td>
+	<td align=center><b>FREESPACE(GB)</b></td>
+	<td align=center><b>USED_SPACE_PERCENTAGE</b></td>' + CAST((
+			SELECT td = [SERVER NAME]
+				,''
+				,td = [DRIVENAME]
+				,''
+				,td = [CAPACITY_GB]
+				,''
+				,td = [FREESPACE_GB]
+				,''
+				,td = [USED_SPACE_PERCENTAGE]
+				,''
+			FROM #Creport
+			FOR XML PATH('tr')
+				,TYPE
+			) AS NVARCHAR(MAX)) + N'</center></table>' + N'<BR><BR><BR>Thanks<BR> Sanjay Humania <BR><BR>';;-- Sender's Name
+ 
+IF (
+		SELECT count(*)
+		FROM #Creport
+		) > 0
+BEGIN
+	DECLARE @today VARCHAR(20) = convert(VARCHAR, getdate(), 105)
+	DECLARE @subject NVARCHAR(max)
+	DECLARE @sqlstr VARCHAR(400)
+ 
+	SET @sqlstr = 'Disk space available on: ' + @svrName --+ ' | ' + @LOCAL_NET_ADDRESS --+' | ' + @today
+ 
+	-- Email server configuration
+	EXEC msdb.dbo.sp_send_dbmail @profile_name = 'SQL_DB_Email'
+		,-- Change Profile Name
+		@recipients = 'sanjay.humania@gmail.com;'
+		,-- Change recipients name
+		@copy_recipients = 'sanjayhumania@gmail.com;'
+		,-- Change copy recipients name
+		@subject = @sqlstr
+		,@body = @tableHTML
+		,@body_format = 'HTML';
+END
+ 
+-- Deleting temp tables
+DROP TABLE [#Creport]
+GO

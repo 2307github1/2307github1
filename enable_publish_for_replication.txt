@@ -1,0 +1,5 @@
+USE master
+EXEC sp_replicationdboption @dbname = 'AdventureWorks2017',
+@optname = 'publish',
+@value = 'true'
+GO
