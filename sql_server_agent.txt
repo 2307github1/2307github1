@@ -1,0 +1,30 @@
+
+
+1. Start the default instance of the Database Engine
+ net start MSSQLSERVER
+
+2. Start a named instance of the Database Engine
+ net start "SQL Server (instancename)"
+	or
+ net start MSSQL$instancename
+
+3. Start the Database Engine with startup options
+ net start MSSQLSERVER /f /m
+
+4. Start the SQL Server Agent on the default instance of SQL Server
+ net start SQLSERVERAGENT
+
+5. Start the SQL Server Agent on a named instance of SQL Server
+ net start "SQL Server Agent (instancename)"
+	or
+ net start SQLAgent$instancename
+
+6. Start the SQL Server Browser
+ net start "SQL Server Browser" 
+	or
+ net start SQLBrowser
+
+7. Stop the Database Engine using Transact-SQL
+ SHUTDOWN;  or SHUTDOWN WITH NOWAIT;
+
+8. 

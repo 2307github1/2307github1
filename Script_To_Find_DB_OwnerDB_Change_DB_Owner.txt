@@ -1,0 +1,13 @@
+SELECT
+    name AS [Database Name], 
+    suser_sname( owner_sid ) AS [Database Owner Name]
+FROM
+    sys.databases
+
+
+-------------------------
+
+USE [YourDB]
+GO
+EXEC sp_changedbowner 'sa'
+GO

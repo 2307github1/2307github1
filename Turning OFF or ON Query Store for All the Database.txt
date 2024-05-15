@@ -1,0 +1,21 @@
+--- Turning OFF Query Store for All the Databases
+
+SELECT 'USE master;' AS Script
+UNION ALL
+SELECT 'ALTER DATABASE ['+name+'] SET QUERY_STORE = OFF;'
+FROM sys.databases
+WHERE name NOT IN ('master', 'model', 'tempdb', 'msdb', 'Resource')
+AND is_query_store_on = 1;
+
+
+
+--- Turning ON Query Store for All the Databases
+
+SELECT 'USE master;' AS Script
+UNION ALL
+SELECT 'ALTER DATABASE ['+name+'] SET QUERY_STORE = ON;'
+FROM sys.databases
+WHERE name NOT IN ('master', 'model', 'tempdb', 'msdb', 'Resource')
+AND is_query_store_on = 0;
+
+

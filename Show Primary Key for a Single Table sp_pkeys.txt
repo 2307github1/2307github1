@@ -1,0 +1,5 @@
+SELECT OBJECT_SCHEMA_NAME(parent_object_id) SchemaName,
+OBJECT_NAME(parent_object_id) AS 'Table',
+name PrimaryKeyName
+FROM sys.key_constraints
+WHERE type = 'PK';

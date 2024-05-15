@@ -1,0 +1,58 @@
+Text
+CREATE PROCEDURE [dbo].[sp_show]        
+    
+  /*---AUTHOR MARUF KHAN            
+    
+---DISCRIPTION THIS PROCEDURE WILL GIVE YOU THE DETAILS OF WHAT IS RUNNING ON THE SERVER LIKE SP_WHO2 ACTIVE            
+    
+---ALSO WILL SHOW YOU THE DETAILS FROM HOW MANY HRS OR MINUTES THE PROCESS IS RUNNING ALONG WITH TEXT QUERY            
+    
+--AND NESTED.*/        
+    
+AS        
+SELECT       
+       r.SESSION_ID,    
+       Db_name(r.database_id) AS DATABASE_NAME,        
+       r.blocking_session_id AS BLOCKED,      
+       Coalesce(Quotename(Db_name(s.dbid)) + N'.' + Quotename(Object_schema_name(s.objectid, s.dbid)) + N'.' + Quotename(Object_name(s.objectid, s.dbid)), '') AS PROC_NAME,       
+       START_TIME,    
+       DATEDIFF(MINUTE,START_TIME,GETDATE()) AS MINUTE_TAKEN,    
+       DATEDIFF(MINUTE,START_TIME,GETDATE())/60 AS HOURS_TAKEN,      
+       CONVERT(VARCHAR(8),DATEADD(SECOND,DATEDIFF(SECOND,START_TIME,GETDATE()),0),108) as PROCESS_RUNNING_TIME,      
+       SUBSTRING(S.TEXT, STATEMENT_START_OFFSET / 2, ( (CASE WHEN STATEMENT_END_OFFSET = -1 THEN (LEN(CONVERT(NVARCHAR(MAX),S.TEXT)) * 2) ELSE STATEMENT_END_OFFSET END) -        STATEMENT_START_OFFSET) / 2)  AS TEXT,              
+       se.HOST_NAME,        
+       se.LOGIN_NAME,        
+       r.STATUS,        
+       r.COMMAND,    
+       PERCENT_COMPLETE,      
+       r.WAIT_TYPE,                 
+       PROGRAMM_NAME = se.program_name,       
+       p.query_plan AS QUERY_PLAN,              
+       r.CPU_TIME,                 
+       r.open_transaction_count AS OPEN_TRANS_COUNT,        
+       r.WAIT_RESOURCE,       
+       r.WAIT_TIME,       
+        R.READS , R.WRITES ,R.LOGICAL_READS, R.ROW_COUNT, NEST_LEVEL, GRANTED_QUERY_MEMORY,                
+       CAST(ROUND((r.granted_query_memory / 128.0)  / 1024,2) AS NUMERIC(10,2))AS GRANTED_MEMORY_GB,        
+       OBJECT_NAME = OBJECT_SCHEMA_NAME(s.objectid,s.dbid) + '.' + OBJECT_NAME(s.objectid, s.dbid),               
+                      
+            
+      CAST(((DATEDIFF(s,start_time,GetDate()))/3600) as varchar) + ' Hours, ' ,       
+      --+ CAST((DATEDIFF(s,start_time,GetDate())%3600)/60 as varchar) + 'min, '        
+      --+ CAST((DATEDIFF(s,start_time,GetDate())%60) as varchar) + ' sec' as RUNNING_TIME,        
+      CAST((estimated_completion_time/3600000) as varchar) + ' hour(s), '        
+      + CAST((estimated_completion_time %3600000)/60000 as varchar) + 'min, '        
+      + CAST((estimated_completion_time %60000)/1000 as varchar) + ' sec' as EST_TIME_TO_GO,        
+      dateadd(second,estimated_completion_time/1000, getdate()) as EST_COMPLETION_TIME,      
+      KILL_COMMAND  = 'Kill '+ CAST(se.session_id  AS VARCHAR(4))        
+             
+      FROM   sys.dm_exec_requests r WITH (NOLOCK)        
+               INNER JOIN sys.dm_exec_sessions se WITH (NOLOCK)        
+                  ON r.session_id = se.session_id        
+               OUTER APPLY sys.dm_exec_sql_text(r.sql_handle) s         
+               OUTER APPLY sys.dm_exec_query_plan(r.plan_handle) p        
+      WHERE  r.session_id <> @@SPID        
+               AND se.is_user_process = 1   
+  
+  
+  
