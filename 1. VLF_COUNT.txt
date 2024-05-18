@@ -30,6 +30,3 @@ ORDER BY VLFCount DESC;
       
 DROP TABLE #VLFInfo;
 DROP TABLE #VLFCountResults;
-
-
---- Proxy_Data_Insert_Deletion_11.70  -- need to check this 172.24.11.26

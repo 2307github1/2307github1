@@ -1,0 +1,18 @@
+TRUNCATE:
+It is a DDL command
+It does not support WHERE clause/condition
+Removes all the data all the time
+Faster than DELETE as it locks entire table
+It removes the data by deallocating the data pages used to store the table’s data, and only the page deallocations are recorded in the transaction log
+It does not activate triggers
+Table identity column is reset to seed value
+
+
+DELETE:
+It is DML command
+It supports WHERE clause/condition
+Removes data based on conditions specified in the WHERE clause (removes all the data if there is no WHERE clause)
+Slower than TRUNCATE as it takes row level locks
+It removes rows one at a time and records an entry in the transaction log for each deleted row
+It does activate triggers
+Table identity column is not reset

@@ -1,17 +1,31 @@
-
 /****************************************************************************/  
 /*************** SQL SERVER HEALTH CHECK REPORT - HTML **********************/  
---Date			: 19-Jan-2023
---Author		: Ajit Yadav
+--Date			: 08-MAY-2020
+--Author		: UDAY ARUMILLI
+--Team			: WWW.udayarumilli.com
 --Version		: 6.0
 --Permissions	: VIEW SERVER STATE, CREATE TEMP TABLE
 -- EXEC TIME	: <30 Min - Depends on data volume
 /***************************** Report Details *******************************/
-
---exec  usp_SQLhealthcheck_report 'GGN3-GENDB5'
-
--- SELECT @@SERVERNAME
-
+-- Tested: SQL Server 2008 R2, 2012, 2014, 2016 and 2017  
+-- Report Type: HTML Report Delivers to Output Window / Mailbox  
+-- Parameters: DBMail Profile Name *, Email ID *, Server Name (Optional);   
+---- Server Details
+---- Instance Information
+---- Disk Space Usage
+---- Tempdb Usage
+---- CPU Usage
+---- Memory Usage
+---- Performance Counter Data
+---- Missing Backup Report
+---- Database Connections
+---- Database Log Space Usage
+---- SQL Agent Job Status
+---- Blocking Process Information
+---- Long Running Transactions
+---- Top 20 Table Size
+---- Index Analysis
+---- SQL ErrorLog 
 /****************************************************************************/  
 /****************************************************************************/ 
 IF EXISTS ( SELECT	1 FROM	SYSOBJECTS WHERE	ID = OBJECT_ID(N'[dbo].[usp_SQLhealthcheck_report]') AND [TYPE] = 'P')
@@ -91,7 +105,7 @@ INSERT INTO #ErrorLogInfo_all
 EXEC XP_READERRORLOG 0, 1,N'Login', N'Failed', @A,@B,'DESC';
 
 INSERT INTO #ErrorLogInfo (LogDate,LogInfo)
-select DISTINCT CONVERT(VARCHAR(20),GETDATE()-1,111) "LogDate",LogInfo  from #ErrorLogInfo_all;
+select DISTINCT CONVERT(VARCHAR(20),GETDATE()+1,111) "LogDate",LogInfo  from #ErrorLogInfo_all;
 
   
 /***********************************************************/  
@@ -143,18 +157,18 @@ BPool_Committed_MB VARCHAR(50),
 BPool_Commit_Tgt_MB VARCHAR(50),  
 BPool_Visible_MB VARCHAR(50));  
 
-
+/****  
   
 -- SQL server 2008 / 2008 R2  
---INSERT INTO #Memory_BPool    
---SELECT  
---     (bpool_committed*8)/1024.0 as BPool_Committed_MB,  
---     (bpool_commit_target*8)/1024.0 as BPool_Commit_Tgt_MB,  
---     (bpool_visible*8)/1024.0 as BPool_Visible_MB  
---FROM sys.dm_os_sys_info;  
- 
+INSERT INTO #Memory_BPool    
+SELECT  
+     (bpool_committed*8)/1024.0 as BPool_Committed_MB,  
+     (bpool_commit_target*8)/1024.0 as BPool_Commit_Tgt_MB,  
+     (bpool_visible*8)/1024.0 as BPool_Visible_MB  
+FROM sys.dm_os_sys_info;  
+****/  
 
- --SQL server 2012 / 2014 / 2016  
+-- SQL server 2012 / 2014 / 2016  
 INSERT INTO #Memory_BPool   
 SELECT  
       (committed_kb)/1024.0 as BPool_Committed_MB,  
@@ -428,26 +442,11 @@ SELECT CONVERT(CHAR(100), SERVERPROPERTY('Servername')) AS Server,
 FROM master.dbo.sysdatabases sd   
   LEFT JOIN msdb.dbo.backupset bs  
   ON sd.name  = bs.database_name   
-WHERE bs.database_name IS  NULL AND sd.name <> 'tempdb' ) AS B   
+WHERE bs.database_name IS NULL AND sd.name <> 'tempdb' ) AS B   
 ORDER BY Database_Name;   
   
-/******************************************************************/  
-/*************** Database Backup Report ***************************/  
-/******************************************************************/  
   
- CREATE TABLE #DB_Backup(  
-[name] VARCHAR(300),  
-[datetime] VARCHAR(50),
-);  
-
- insert into #DB_Backup
- SELECT sdb.Name AS db_names,
-COALESCE(CONVERT(VARCHAR(12), MAX(bus.backup_finish_date), 101),'-') AS LastBackUpTime
-FROM sys.sysdatabases sdb
-LEFT OUTER JOIN msdb.dbo.backupset bus ON bus.database_name = sdb.name
-GROUP BY sdb.Name
-
-
+  
        
 /*************************************************************/  
 /****************** Connection Details ***********************/  
@@ -534,7 +533,7 @@ EXEC ('DBCC SQLPERF(LOGSPACE) WITH NO_INFOMSGS;');
   
 /********************************************************************/  
 /****************** Long Running Transactions ***********************/  
-/******************************************************************** 
+/********************************************************************/  
   
 CREATE TABLE #OpenTran_Detail(  
  [SPID] [varchar](20) NULL,  
@@ -579,7 +578,7 @@ CROSS APPLY sys.dm_exec_sql_text(s.sql_handle)a
 INNER JOIN OpenTRAN AS OT ON OT.session_id = s.spid   
 WHERE s.spid <> @@spid AND s.dbid>4;  
 
-*/
+
 
 /********************************************************************/  
 /****************** Top 20 Tables ***********************/  
@@ -630,40 +629,33 @@ WHERE s.spid <> @@spid AND s.dbid>4;
 /****************** Index Fragmentation Details ***********************/  
 /********************************************************************/  
   
-CREATE TABLE #FREGMENT
-(
-DBNAME VARCHAR(128),
-SCHEMANAME VARCHAR(128),
-TABLENAME VARCHAR(128),
-INDEXNAME VARCHAR(128),
-FREGPERCENT VARCHAR(128),
-INDEXTYPE VARCHAR(128),
-ISPRIMARYKEY VARCHAR(128));
+CREATE TABLE #IdxFrag_Detail(  
+ID INT IDENTITY PRIMARY KEY NOT NULL,
+[SCHEMA]   NVARCHAR(250),
+[TABLE]	   NVARCHAR(250),
+[INDEX]    NVARCHAR(250),
+[FRAGMENTATION] NVARCHAR(250),
+[PAGE_COUNT] NVARCHAR(500), 
+[STATUS] NVARCHAR(250));
 
-
---It's not possible to achieve without using temp table as the DMVs/DMFs that we are using are database scoped and requirement is server scoped, and i don't see any difficulties or complication using temp table as follows:
-
---Declare @Tbl table ( DBName varchar(128), SchemaName varchar(128), TableName varchar (100), IndexName varchar (100), FragPercent float, IndexType tinyint, IsPrimaryKey bit);
-
-Insert into #FREGMENT
-exec SP_MSforeachdb @command1 = 
-            'use [?];
-                select  
-                        DB_NAME(),
-                        sc.name as SchemaName,
-                        object_name (s.object_id) as TableName, 
-                        I.name, 
-                        s.avg_fragmentation_in_percent, 
-                        I.type, 
-                        I.is_primary_key
-                from sys.dm_db_index_physical_stats (DB_ID (), NULL, NULL, NULL, ''LIMITED'') as S
-                    join sys.indexes as I on s.object_id = I.object_id and s.index_id = I.index_id
-                    join sys.objects as O on s.object_id = O.object_id 
-                    join sys.schemas as sc on O.schema_id = sc.schema_id
-                where o.type = ''U'' and avg_fragmentation_in_percent > 50 and (I.name is not null) AND DB_ID() > 4
-                ORDER BY  avg_fragmentation_in_percent DESC';
-
-
+INSERT INTO #IdxFrag_Detail ([SCHEMA],[TABLE],[INDEX],[FRAGMENTATION],[PAGE_COUNT],[STATUS])
+SELECT	TOP 50
+		object_schema_name(ips.object_id)	AS 'Schema_Name',
+		object_name (ips.object_id)		AS 'Object_Name',
+		i.name					AS 'Index_Name',
+		ips.avg_fragmentation_in_percent	AS 'Avg_Fragmentation%',
+		ips.page_count				AS 'Page_Count',
+		CASE	WHEN (ips.avg_fragmentation_in_percent BETWEEN 5 AND 30) AND ips.page_count > 1000
+			THEN 'Reorganize'
+		WHEN ips.avg_fragmentation_in_percent > 30 AND ips.page_count > 1000 
+			THEN 'Rebuild'
+		ELSE	     'Healthy'
+		END AS 'Index_Status'
+FROM	sys.dm_db_index_physical_stats(db_id(), null, null, null, null) ips
+INNER JOIN sys.indexes i ON i.object_id = ips.object_id 
+		   AND i.index_id = ips.index_id
+WHERE	ips.index_id > 0
+ORDER BY avg_fragmentation_in_percent DESC;
 
 
 
@@ -939,38 +931,7 @@ SELECT
   '</tr>'                                  
 FROM             
  #Backup_Report  
-
-
-
- /*************************DB_BACKUP*****************************/
   
-  SELECT                                   
- @TableHTML =  @TableHTML +                              
- '</table>                                  
- <p style="margin-top: 1; margin-bottom: 0">&nbsp;</p>                                  
- <font face="Verdana" size="4" color="#3399ff"><H3><bold>DataBase Backup Report</bold></H3></font>                                  
- <table id="AutoNumber1" style="BORDER-COLLAPSE: collapse" borderColor="#111111" height="40" cellSpacing="0" cellPadding="0" width="47%" border="2">                                  
-   <tr>                 
- 
-  <th align="left" width="136" bgColor="#000080">                                    
- <font face="Verdana" size="1" color="#FFFFFF">Database_Name</font></th> 
-                             
-  <th align="left" width="200" bgColor="#000080">               
- <font face="Verdana" size="1" color="#FFFFFF">Last_Backup_Date</font></th>    
-       
-   </tr>'                                  
-SELECT      
- @TableHTML =  @TableHTML +                                       
- '<tr>                     
-  <td><font face="Verdana" size="1">' + ISNULL(CONVERT(VARCHAR(100),  [name]), '')  +'</font></td>' +                                        
- '<td><font face="Verdana" size="1">' + ISNULL(CONVERT(VARCHAR(100),  [datetime]), '')  +'</font></td>' +  
-                              
-  '</tr>'                                  
-FROM             
- #DB_Backup  
-
-
-
  /****** Connection Information *****/  
   
  SELECT                                   
@@ -1114,7 +1075,7 @@ FROM
 ORDER BY     spid    
   
   
-/**** Long running Transactions*****
+/**** Long running Transactions*****/  
 SELECT                                   
  @TableHTML =  @TableHTML +                              
  '</table>                                  
@@ -1169,9 +1130,7 @@ select
  '<td align="Center"><font face="Verdana" size="1">' + ISNULL([SQL], '') +'</font></td>' +                   
  '<td align="Center"><font face="Verdana" size="1">' + ISNULL(Blocked, '') +'</font></td></tr>'                                 
 from                                   
- #OpenTran_Detail   
- 
- */    
+ #OpenTran_Detail       
 
 
  /**** Top 20 Tables in Database*****/  
@@ -1221,34 +1180,35 @@ SELECT
  <table id="AutoNumber1" style="BORDER-COLLAPSE: collapse" borderColor="#111111" height="40" cellSpacing="0" cellPadding="0" width="933" border="2">                                  
    <tr>                
  <th align="Center" width="300" bgColor="#000080">                                    
- <font face="Verdana" size="1" color="#FFFFFF">DBNAME</font></th>               
+ <font face="Verdana" size="1" color="#FFFFFF">SCHEMA</font></th>               
  <th align="Center" width="300" bgColor="#000080">                                    
- <font face="Verdana" size="1" color="#FFFFFF">SCHEMANAME</font></th>               
+ <font face="Verdana" size="1" color="#FFFFFF">TABLE</font></th>               
  <th align="Center" width="250" bgColor="#000080">                                    
- <font face="Verdana" size="1" color="#FFFFFF">TABLENAME</font></th>               
+ <font face="Verdana" size="1" color="#FFFFFF">INDEX</font></th>               
 <th align="Center" width="250" bgColor="#000080">                                    
- <font face="Verdana" size="1" color="#FFFFFF">INDEXNAME</font></th>               
+ <font face="Verdana" size="1" color="#FFFFFF">FRAGMENTATION%</font></th>               
 <th align="Center" width="250" bgColor="#000080">                                    
- <font face="Verdana" size="1" color="#FFFFFF">FREGPERCENT%</font></th>               
+ <font face="Verdana" size="1" color="#FFFFFF">PAGE_COUNT</font></th>               
 <th align="Center" width="200" bgColor="#000080">                                    
- <font face="Verdana" size="1" color="#FFFFFF">INDEXTYPE</font></th>  
- <th align="Center" width="200" bgColor="#000080">                                    
- <font face="Verdana" size="1" color="#FFFFFF">ISPRIMARYKEY</font></th>             
+ <font face="Verdana" size="1" color="#FFFFFF">Status</font></th>               
    </tr>'                                  
 select                                   
 @TableHTML =  @TableHTML +                                     
  '<tr>' +                                      
- '<td align="LEFT"><font face="Verdana" size="1">' + ISNULL(DBNAME, '') + '</font></td>' +                                      
- '<td align="LEFT"><font face="Verdana" size="1">' + ISNULL(SCHEMANAME, '') +'</font></td>' +                                      
- '<td align="LEFT"><font face="Verdana" size="1">' + ISNULL(TABLENAME, '') +'</font></td>' +                                      
-  '<td align="Center"><font face="Verdana" size="1">' + ISNULL(INDEXNAME, '') +'</font></td>' +                   
-  '<td align="Center"><font face="Verdana" size="1">' + ISNULL(FREGPERCENT, '') +'</font></td>' +                   
-    '<td align="Center"><font face="Verdana" size="1">' + ISNULL(INDEXTYPE, '') +'</font></td>' +  
-	  '<td align="Center"><font face="Verdana" size="1">' + ISNULL(ISPRIMARYKEY, '') +'</font></td>' +                                
+ '<td align="LEFT"><font face="Verdana" size="1">' + ISNULL([SCHEMA], '') + '</font></td>' +                                      
+ '<td align="LEFT"><font face="Verdana" size="1">' + ISNULL([TABLE], '') +'</font></td>' +                                      
+ '<td align="LEFT"><font face="Verdana" size="1">' + ISNULL([INDEX], '') +'</font></td>' +                                      
+  '<td align="Center"><font face="Verdana" size="1">' + ISNULL([FRAGMENTATION], '') +'</font></td>' +                   
+  '<td align="Center"><font face="Verdana" size="1">' + ISNULL([PAGE_COUNT], '') +'</font></td>' +                   
+ CASE WHEN [STATUS] = 'HEALTHY' THEN  
+  '<td align="Center"><font face="Verdana" size="1" color="#1ACC25"><b>' + ISNULL([STATUS], '')  +'</b></font></td>'  
+ ELSE  
+ '<td align="Center"><font face="Verdana" size="1" color="#FF0000"><b>' + ISNULL([STATUS], '')  +'</b></font></td>'   
+ END +                                     
   '</tr>'                               
                                 
 from                                   
- #FREGMENT      
+ #IdxFrag_Detail  ORDER BY ID;       
 
 
 
@@ -1309,13 +1269,12 @@ DROP TABLE  #Memory;
 DROP TABLE  #perfmon_counters;  
 DROP TABLE  #PerfCntr_Data;  
 DROP TABLE  #Backup_Report;  
-DROP TABLE #DB_Backup;
 DROP TABLE  #ConnInfo;  
 DROP TABLE  #JobInfo;  
 DROP TABLE  #tempdbfileusage;  
 DROP TABLE  #LogSpace;  
---DROP TABLE  #OpenTran_Detail;  
-DROP TABLE #FREGMENT
+DROP TABLE  #OpenTran_Detail;  
+  
 SET NOCOUNT OFF;  
 SET ARITHABORT OFF;  
 END  

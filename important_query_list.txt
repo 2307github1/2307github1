@@ -17,7 +17,8 @@ GROUP BY database_id, login_name, status, host_name, program_name, nt_domain, nt
  This script sourced from here. It results a list of queries which are utilizing high CPU. Below is the SQL Script to Monitor CPU Utilization from Ad-hoc queries.
 
 /*****	Script: Top 20 Stored Procedures using High CPU *****/
-
+/*****	Support: SQL Server 2008 and Above *****/
+/*****	Tested On: SQL Server 2008 R2 and 2014 *****/
 /*****	Output: Queries, CPU, Elapsed Times, Ms and S ****/
 SELECT TOP (20)
     st.text AS Query,
@@ -41,8 +42,17 @@ ORDER BY qs.total_worker_time DESC OPTION (RECOMPILE);
  This script sourced from here. It results a list of stored procedures which are utilizing high CPU. This script goes through the buffer cache and find out these results based on Total and Average worker thread times. Below is the SQL Script to Monitor CPU Utilization from the stored procedure point of view.
 
 /*****	Script: Top 20 Stored Procedures using High CPU *****/
-
-
+/*****	Support: SQL Server 2008 and Above *****/
+/*****	Tested On: SQL Server 2008 R2 and 2014 *****/
+/*****	Output: 
+		SP Name: Stored Procedure Name
+		TotalWorkerTime: Total Worker Time since the last compile time
+		AvgWorkerTime: Average Worker Time since last compile time
+		execution_count: Total number of execution since last compile time
+		Calls/Second: Number of calls / executions per second
+		total_elapsed_time: total elapsed time
+		avg_elapsed_time: Average elapsed time
+		cached_time: Procedure Cached time
 *****/
 SELECT TOP (20) 
   p.name AS [SP Name], 
